@@ -1,0 +1,27 @@
+{
+    "BALANZA": "Descripción genérica para la balanza.",
+    "CAL-VO-001": {
+        "descripcion": "Balanza electrónica, marca: RADWAG; modelo: XA 21/52.4Y.M.A.P PLUS; númeo de serie: 673837; Id.: CAL-VOL-001; Alcance: 21 g /52 g; división mínima: 0.000 001 g / 0.000 005 g, con Certificado de Calibración: CCM1159.M/2025 emitido por 'Insco de México', S.A. de C.V. Vigente hasta: Agosto 2026.",
+        "resolucion_g": 0.000001,
+        "incertidumbre_max_g": 0.000049,
+        "excentricidad_max_g": 0.000005
+    },
+    "CAL-VO-002": {
+        "descripcion": "Balanza Analítica (LBE-049), marca: Radwag; modelo: AS 220.R2; serie: 559295; Id.: CAL-VOL-002; alcance: 220 g; división mínima: 0.000 1 g, con Certificado de Calibración: CCM1158.M/2025 emitido por 'Insco de México', S.A. de C.V. Vigente hasta: Agosto 2026.",
+        "resolucion_g": 0.0001,
+        "incertidumbre_max_g": 0.00032,
+        "excentricidad_max_g": 0.0002
+    },
+    "CAL-VO-003": {
+        "descripcion": "Balanza Analítica, marca: Radwag; modelo: PS 6100.X2.M; serie: 671350; Id.: CAL-VOL-003; alcance: 6 100 g; división mínima: 0.01 g, con Certificado de Calibración: CCM1157.M/2025 emitido por 'Insco de México', S.A. de C.V. Vigente hasta: Agosto 2026."
+    },
+    "CAL-VO-004": {
+        "descripcion": "Balanza Analítica, marca: Precisa; modelo: IBK3400D; serie: 5901948; Id.: CAL-VOL-004; alcance: 34 1000 g; división mínima: 0. 1 g, con Certificado de Calibración: CCN1199.M/2021 emitido por 'Insco de México', S.A. de C.V. vigente hasta: Septiembre 2023."
+    },
+    "CAL-VO-005": {
+        "descripcion": "Termómetro digital, marca: UNI-T; modelo: UT325; serie: C191109594; Id.: CAL-VOL-005, con Certificado de Calibración: CAT-1701-25 emitido por CALTEST, S.A. de C.V. Vigente hasta: Junio 2026."
+    },
+    "CAL-VO-051": {
+        "descripcion": "Termohigrómetro-Barométro, marca: EXTECH INSTRUMENTS; modelo: SD700; serie: A.122428; Id.: CAL-VOL-051, con Certificados de calibración: CAT-1687-25, CAH-1063-25, CAP-0875-25, emitidos por: CALTEST LABORATORIO S.A. de C.V. Vigente hasta: Junio 2026."
+    }
+}

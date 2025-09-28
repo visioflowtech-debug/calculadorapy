@@ -1,0 +1,5 @@
+@import "tailwindcss";
+
+@theme {
+  /* Aquí puedes extender la configuración de Tailwind si lo necesitas en el futuro */
+}
