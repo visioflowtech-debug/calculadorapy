@@ -249,6 +249,88 @@ def generar_textos_reporte(entradas_generales, resultados_aforos, especificacion
         "unidades": eg.get('unidades', 'µL')
     }
 
+def diagnosticar_incertidumbre(aforo_data, factores, promedios_ambientales, espec_patron, constantes, volumenes_corregidos_ul, canal_numero):
+    """
+    Función de diagnóstico que imprime paso a paso todos los cálculos de incertidumbre
+    para comparar con Excel.
+    """
+    print(f"\n=== DIAGNÓSTICO INCERTIDUMBRE CANAL {canal_numero} ===")
+    
+    # --- 1. INCERTIDUMBRES ESTÁNDAR (u_i) ---
+    print("\n1. INCERTIDUMBRES ESTÁNDAR:")
+    
+    # 1.1. Incertidumbre de la balanza (u_cal) en kg
+    resolucion_kg = espec_patron.get('resolucion_g', 0) / 1000.0
+    incert_max_kg = espec_patron.get('incertidumbre_max_g', 0) / 1000.0
+    excentricidad_kg = espec_patron.get('excentricidad_max_g', 0) / 1000.0
+    
+    print(f"  Resolución balanza: {resolucion_kg:.6f} kg")
+    print(f"  Incert. máx balanza: {incert_max_kg:.6f} kg")
+    print(f"  Excentricidad balanza: {excentricidad_kg:.6f} kg")
+    
+    u_cal = math.sqrt((resolucion_kg / math.sqrt(12))**2 + (incert_max_kg / 2)**2 + (excentricidad_kg / math.sqrt(12))**2)
+    print(f"  u_cal = {u_cal:.9f} kg")
+
+    # 1.2. Incertidumbre por repetibilidad (u_rep) en kg
+    masas_kg = [m / 1000.0 for m in aforo_data['mediciones_masa']]
+    print(f"  Masas (kg): {[f'{m:.6f}' for m in masas_kg[:5]]}...") # Solo mostrar primeras 5
+    
+    if len(masas_kg) < 2:
+        desv_est_masa = 0
+    else:
+        media_masa = sum(masas_kg) / len(masas_kg)
+        varianza = sum([(x - media_masa)**2 for x in masas_kg]) / (len(masas_kg) - 1)
+        desv_est_masa = math.sqrt(varianza)
+        print(f"  Media masa: {media_masa:.6f} kg")
+        print(f"  Desv. estándar: {desv_est_masa:.9f} kg")
+    
+    u_rep = desv_est_masa / math.sqrt(len(masas_kg)) if len(masas_kg) > 0 else 0
+    print(f"  u_rep = {u_rep:.9f} kg")
+
+    # 1.3. Incertidumbre por resolución del instrumento (u_res) en m³
+    resolucion_instrumento_ul = constantes.get('div_min_valor', 0)
+    print(f"  Resolución instrumento: {resolucion_instrumento_ul} µL")
+    u_res_m3 = (resolucion_instrumento_ul / 1e9) / math.sqrt(12)
+    print(f"  u_res = {u_res_m3:.12f} m³")
+
+    # 1.4. Incertidumbre por temperatura del agua (u_temp_agua) en °C
+    u_temp_agua_C = 0.1 / math.sqrt(3)
+    print(f"  u_temp_agua = {u_temp_agua_C:.6f} °C")
+
+    # --- 2. COEFICIENTES DE SENSIBILIDAD (c_i) ---
+    print("\n2. COEFICIENTES DE SENSIBILIDAD:")
+    
+    volumenes_corregidos_m3 = [v / 1e9 for v in volumenes_corregidos_ul]
+    avg_vol_m3 = sum(volumenes_corregidos_m3) / len(volumenes_corregidos_m3) if volumenes_corregidos_m3 else 0
+    avg_masa_kg = sum(masas_kg) / len(masas_kg) if masas_kg else 0
+    
+    print(f"  Volumen promedio: {avg_vol_m3:.9f} m³")
+    print(f"  Masa promedio: {avg_masa_kg:.6f} kg")
+    print(f"  Alpha material: {constantes['alpha_material_pp']}")
+    
+    c_masa = - (avg_vol_m3 / avg_masa_kg) if avg_masa_kg != 0 else 0
+    print(f"  c_masa = -{avg_vol_m3:.9f} / {avg_masa_kg:.6f} = {c_masa:.6f} m³/kg")
+    
+    c_temp_agua = -avg_vol_m3 * constantes['alpha_material_pp']
+    print(f"  c_temp_agua = -{avg_vol_m3:.9f} * {constantes['alpha_material_pp']} = {c_temp_agua:.12f} m³/°C")
+
+    # --- 3. CONTRIBUCIONES A LA INCERTIDUMBRE COMBINADA ---
+    print("\n3. CONTRIBUCIONES:")
+    
+    u_y_cal = c_masa * u_cal
+    u_y_rep = c_masa * u_rep
+    u_y_res = u_res_m3
+    u_y_temp_agua = c_temp_agua * u_temp_agua_C
+    
+    print(f"  u_y_cal = {c_masa:.6f} * {u_cal:.9f} = {u_y_cal:.12f} m³")
+    print(f"  u_y_rep = {c_masa:.6f} * {u_rep:.9f} = {u_y_rep:.12f} m³")
+    print(f"  u_y_res = {u_y_res:.12f} m³")
+    print(f"  u_y_temp_agua = {c_temp_agua:.12f} * {u_temp_agua_C:.6f} = {u_y_temp_agua:.12f} m³")
+
+    # El resto de la función de diagnóstico sigue la misma lógica que `calcular_incertidumbre`
+    # y no necesita cambios para esta demostración.
+    # ...
+
 # --- FUNCIÓN PRINCIPAL ---
 
 def procesar_todos_los_aforos(data):
@@ -258,6 +340,7 @@ def procesar_todos_los_aforos(data):
     constantes = data['constantes']
     entradas_generales = data['entradas_generales']
     especificaciones_patrones = data.get('especificaciones_patrones', {})
+    debug_mode = entradas_generales.get('debug_mode', False)
     # Añadir la resolución del instrumento a las constantes para usarla en el cálculo de incertidumbre
     constantes['div_min_valor'] = entradas_generales.get('div_min_valor', 0)
 
@@ -288,7 +371,16 @@ def procesar_todos_los_aforos(data):
             for masa_g in aforo_data['mediciones_masa']
         ]
         
-        espec_patron = especificaciones_patrones.get(entradas_generales.get('patron_seleccionado'), {})
+        # Asegurarnos de que espec_patron sea un diccionario, incluso si no se encuentra.
+        patron_key = entradas_generales.get('patron_seleccionado')
+        espec_patron = especificaciones_patrones.get(patron_key) if patron_key else {}
+        if espec_patron is None or not isinstance(espec_patron, dict):
+            espec_patron = {}
+        
+        if debug_mode:
+            # Llamamos a la función de diagnóstico que imprimirá todo en la consola del servidor
+            diagnosticar_incertidumbre(aforo_data, factores, promedios_ambientales, espec_patron, constantes, volumenes_corregidos_ul, i)
+
         incertidumbre = calcular_incertidumbre(aforo_data, factores, promedios_ambientales, espec_patron, constantes, volumenes_corregidos_ul)
         
         if not volumenes_corregidos_ul:

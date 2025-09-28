@@ -13,6 +13,7 @@ PATRONES_ESPECIFICACIONES = {}
 try:
     with open(os.path.join(app.static_folder, 'config', 'patrones.json'), 'r', encoding='utf-8') as f:
         PATRONES_ESPECIFICACIONES = json.load(f)
+    app.logger.info(f"Archivo 'patrones.json' cargado con éxito. {len(PATRONES_ESPECIFICACIONES)} patrones encontrados.")
 except Exception as e:
     app.logger.error(f"No se pudo cargar el archivo de patrones: {e}")
 
