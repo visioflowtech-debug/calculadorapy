@@ -1,0 +1,41 @@
+2025-10-01 09:10:57,134 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 09:11:19,708 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 09:11:21,991 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 09:16:00,690 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 09:21:48,436 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 09:24:42,777 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 09:25:00,240 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 09:25:02,529 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 09:28:36,800 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 09:28:44,737 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 09:28:46,938 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 09:32:18,739 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 09:32:31,616 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 09:32:40,138 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 09:32:42,242 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 09:35:46,661 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 09:35:49,037 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 09:40:01,175 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 09:40:07,584 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 09:50:34,844 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 09:51:02,767 - ERROR - Error al generar el PDF: name 'datetime' is not defined
+Traceback (most recent call last):
+  File "C:\calculadora_python\app.py", line 106, in exportar_pdf_ruta
+    file_name = f"Reporte_de_servicio_{datetime.now().strftime('%d%m%Y%H%M%S')}.pdf"
+NameError: name 'datetime' is not defined
+2025-10-01 09:51:04,614 - ERROR - Error al generar el PDF: name 'datetime' is not defined
+Traceback (most recent call last):
+  File "C:\calculadora_python\app.py", line 109, in exportar_pdf_ruta
+    file_name = f"Certificado_{datetime.now().strftime('%d%m%Y%H%M%S')}.pdf"
+NameError: name 'datetime' is not defined
+2025-10-01 09:52:01,816 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 11:55:50,586 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 11:58:52,028 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 14:44:47,516 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 14:44:49,833 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 14:46:00,965 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 14:46:16,200 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 15:24:43,255 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 15:24:45,400 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 15:36:52,303 - INFO - *** Servidor de Calculadora Iniciado ***
+2025-10-01 15:36:54,546 - INFO - *** Servidor de Calculadora Iniciado ***

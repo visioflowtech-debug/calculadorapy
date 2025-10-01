@@ -10,12 +10,13 @@ def calcular_un_volumen_corregido(masa_g, factores):
     """
     masa_kg = masa_g / 1000.0
     
-    # V_20 = m * (1/(ρ_w - ρ_a)) * (1 - ρ_a/ρ_p) * (1 - α(t_w - 20))
-    volumen_m3 = masa_kg * factores['flotacion'] * factores['pesa'] * factores['dilatacion']
-    
+    # V_20 = m * (1/(ρ_w - ρ_a)) * (1 - α(t_w - 20))
+    # Se elimina el factor 'pesa' (Z2) de la fórmula principal, según el análisis del documento del cliente.
+    # La fórmula ahora es: V_20 = masa_kg * Z1 * Z3
+    volumen_m3 = masa_kg * factores['flotacion'] * factores['dilatacion']
     # Convertir de m³ a µL (1 m³ = 1e9 µL) y redondear
-    volumen_ul = round(volumen_m3 * 1e9, 4)
-    return volumen_ul
+    # Se elimina el redondeo intermedio para mantener la máxima precisión.
+    return volumen_m3 * 1e9
 
 def calcular_factores_de_correccion(promedios_ambientales, constantes):
     """
@@ -23,21 +24,22 @@ def calcular_factores_de_correccion(promedios_ambientales, constantes):
     basado en sus condiciones ambientales promedio.
     """
     p_temp_agua = promedios_ambientales['temp_agua']
-    p_temp_amb = promedios_ambientales['temp_amb']
-    p_presion = promedios_ambientales['presion']
-    p_humedad = promedios_ambientales['humedad']
+    p_temp_aire = promedios_ambientales['temp_amb']
+    p_presion_hpa = promedios_ambientales['presion']
+    p_humedad_rel = promedios_ambientales['humedad']
 
-    c = constantes
-    # Fórmula de densidad del agua (Tanaka, M. et al. Metrologia 2001, 38, 301-309)
-    # Corregida para coincidir con la estructura del Excel.
-    # ρw = O37 * (1 - ( ((P21+O33)^2 * (P21+O34)) / (O35 * (P21+O36)) )) + O55
-    numerador = (p_temp_agua + (-3.983035))**2 * (p_temp_agua + 301.797)
-    denominador = 522528.9 * (p_temp_agua + 69.34881)
-    rho_agua = 999.97495 * (1 - (numerador / denominador)) + 0
+    c = constantes # constantes del frontend (contiene tanaka_a1, etc.)
 
-    # Formula CIPM-2007
-    exp_term = math.exp(c['rho_aire_o53'] * p_temp_amb)
-    rho_aire = ((c['rho_aire_o51'] * p_presion) - (c['rho_aire_o52'] * p_humedad * exp_term)) / (273.15 + p_temp_amb)
+    # Densidad del Agua (ρ_A) - Ecuación de Tanaka según el documento
+    # PA = a5 * [1 - ((ta + a1)² * (ta + a2)) / (a3 * (ta + a4))]
+    numerador = (p_temp_agua + c['tanaka_a1'])**2 * (p_temp_agua + c['tanaka_a2'])
+    denominador = c['tanaka_a3'] * (p_temp_agua + c['tanaka_a4'])
+    rho_agua = c['tanaka_a5'] * (1 - (numerador / denominador))
+
+    # Densidad del Aire (ρ_a) - Fórmula CIPM-2007 (implementación del Excel)
+    # Esta fórmula usa las constantes del frontend que ya están cargadas
+    exp_term = math.exp(c['rho_aire_o53'] * p_temp_aire)
+    rho_aire = ((c['rho_aire_o51'] * p_presion_hpa) - (c['rho_aire_o52'] * p_humedad_rel * exp_term)) / (273.15 + p_temp_aire)
     
     factor_flotacion = 1 / (rho_agua - rho_aire) if (rho_agua - rho_aire) != 0 else 1
     factor_pesa = 1 - (rho_aire / c['rho_pesa_n74'])
@@ -46,7 +48,9 @@ def calcular_factores_de_correccion(promedios_ambientales, constantes):
     return {
         'flotacion': factor_flotacion,
         'pesa': factor_pesa,
-        'dilatacion': factor_dilatacion
+        'dilatacion': factor_dilatacion,
+        'rho_agua': rho_agua,
+        'rho_aire': rho_aire
     }
 
 def corregir_y_promediar_condiciones(mediciones_ambientales, constantes):
@@ -65,17 +69,18 @@ def corregir_y_promediar_condiciones(mediciones_ambientales, constantes):
     promedio_presion = sum(med['presion'] for med in mediciones_ambientales) / num_mediciones
     promedio_humedad = sum(med['humedad'] for med in mediciones_ambientales) / num_mediciones
 
-    # 2. Aplicar la corrección cuadrática al promedio
-    corr_t_agua = (constantes['a_temp_agua'] * promedio_temp_agua**2) + (constantes['b_temp_agua'] * promedio_temp_agua) + constantes['c_temp_agua']
+    # 2. Aplicar la corrección cuadrática al promedio (restando, según el documento)
+    # CORRECCIÓN: Se revierte a la suma para coincidir con el comportamiento del Excel validado.
+    corr_t_agua = (constantes['corr_ta_y']['a'] * promedio_temp_agua**2) + (constantes['corr_ta_y']['b'] * promedio_temp_agua) + constantes['corr_ta_y']['c']
     temp_agua_final = promedio_temp_agua + corr_t_agua
 
-    corr_t_amb = (constantes['a_temp_amb'] * promedio_temp_amb**2) + (constantes['b_temp_amb'] * promedio_temp_amb) + constantes['c_temp_amb']
+    corr_t_amb = (constantes['corr_tamb_y']['a'] * promedio_temp_amb**2) + (constantes['corr_tamb_y']['b'] * promedio_temp_amb) + constantes['corr_tamb_y']['c']
     temp_amb_final = promedio_temp_amb + corr_t_amb
 
-    corr_presion = (constantes['a_presion'] * promedio_presion**2) + (constantes['b_presion'] * promedio_presion) + constantes['c_presion']
+    corr_presion = (constantes['corr_patm_y']['a'] * promedio_presion**2) + (constantes['corr_patm_y']['b'] * promedio_presion) + constantes['corr_patm_y']['c']
     presion_final = promedio_presion + corr_presion
 
-    corr_humedad = (constantes['a_humedad'] * promedio_humedad**2) + (constantes['b_humedad'] * promedio_humedad) + constantes['c_humedad']
+    corr_humedad = (constantes['corr_hr_y']['a'] * promedio_humedad**2) + (constantes['corr_hr_y']['b'] * promedio_humedad) + constantes['corr_hr_y']['c']
     humedad_final = promedio_humedad + corr_humedad
 
     return {
@@ -84,84 +89,6 @@ def corregir_y_promediar_condiciones(mediciones_ambientales, constantes):
         'presion': presion_final,
         'humedad': humedad_final,
     }
-
-def calcular_incertidumbre(aforo_data, factores, promedios_ambientales, espec_patron, constantes, volumenes_corregidos_ul):
-    """
-    Calcula la incertidumbre expandida para un aforo.
-    """
-    # --- 1. INCERTIDUMBRES ESTÁNDAR (u_i) ---
-
-    # 1.1. Incertidumbre de la balanza (u_cal) en kg
-    resolucion_kg = espec_patron.get('resolucion_g', 0) / 1000.0
-    incert_max_kg = espec_patron.get('incertidumbre_max_g', 0) / 1000.0
-    excentricidad_kg = espec_patron.get('excentricidad_max_g', 0) / 1000.0
-    u_cal = math.sqrt((resolucion_kg / math.sqrt(12))**2 + (incert_max_kg / 2)**2 + (excentricidad_kg / math.sqrt(12))**2)
-
-    # 1.2. Incertidumbre por repetibilidad (u_rep) en kg
-    masas_kg = [m / 1000.0 for m in aforo_data['mediciones_masa']]
-    if len(masas_kg) < 2:
-        desv_est_masa = 0
-    else:
-        media_masa = sum(masas_kg) / len(masas_kg)
-        desv_est_masa = math.sqrt(sum([(x - media_masa)**2 for x in masas_kg]) / (len(masas_kg) - 1))
-    u_rep = desv_est_masa / math.sqrt(len(masas_kg)) if len(masas_kg) > 0 else 0
-
-    # 1.3. Incertidumbre por resolución del instrumento (u_res) en m³
-    resolucion_instrumento_ul = constantes.get('div_min_valor', 0)
-    u_res_m3 = (resolucion_instrumento_ul / 1e9) / math.sqrt(12)
-
-    # 1.4. Incertidumbre por temperatura del agua (u_temp_agua) en °C
-    u_temp_agua_C = 0.1 / math.sqrt(3) # Asumiendo incertidumbre de termómetro de 0.1 °C
-
-    # --- 2. COEFICIENTES DE SENSIBILIDAD (c_i) ---
-
-    # Promedios necesarios para los coeficientes
-    volumenes_corregidos_m3 = [v / 1e9 for v in volumenes_corregidos_ul]
-    avg_vol_m3 = sum(volumenes_corregidos_m3) / len(volumenes_corregidos_m3) if volumenes_corregidos_m3 else 0
-    avg_masa_kg = sum(masas_kg) / len(masas_kg) if masas_kg else 0
-
-    # c_masa: Sensibilidad del volumen al cambio en masa (dV/dm). En Excel: -O103/O19
-    # O103 es avg_vol_m3, O19 es avg_masa_kg.
-    # El signo negativo es crucial y faltaba en implementaciones anteriores.
-    c_masa = - (avg_vol_m3 / avg_masa_kg) if avg_masa_kg != 0 else 0
-
-    # c_temp_agua: Sensibilidad del volumen al cambio en temp. del agua (dV/dTw).
-    c_temp_agua = -avg_vol_m3 * constantes['alpha_material_pp']
-
-    # --- 3. CONTRIBUCIONES A LA INCERTIDUMBRE COMBINADA (u_i(y) = c_i * u_i) en m³ ---
-    u_y_cal = c_masa * u_cal
-    u_y_rep = c_masa * u_rep
-    u_y_res = u_res_m3 # La resolución ya está en m³, su coeficiente es 1.
-    u_y_temp_agua = c_temp_agua * u_temp_agua_C
-
-    # --- 4. INCERTIDUMBRE COMBINADA (u_c) en m³ ---
-    u_c_m3 = math.sqrt(u_y_cal**2 + u_y_rep**2 + u_y_res**2 + u_y_temp_agua**2)
-
-    # --- 5. GRADOS DE LIBERTAD EFECTIVOS (v_eff) ---
-    # Fórmula de Welch-Satterthwaite: v_eff = u_c^4 / sum( u_i(y)^4 / v_i )
-    v_cal = float('inf') # Asumimos que la incertidumbre del patrón es muy confiable
-    v_rep = len(masas_kg) - 1 if len(masas_kg) > 1 else float('inf')
-    v_res = float('inf')
-    v_temp_agua = float('inf')
-
-    denominador_v_eff = 0
-    if v_cal != float('inf'): denominador_v_eff += (u_y_cal**4) / v_cal
-    if v_rep != float('inf'): denominador_v_eff += (u_y_rep**4) / v_rep
-    if v_res != float('inf'): denominador_v_eff += (u_y_res**4) / v_res
-    if v_temp_agua != float('inf'): denominador_v_eff += (u_y_temp_agua**4) / v_temp_agua
-
-    v_eff = (u_c_m3**4) / denominador_v_eff if denominador_v_eff > 0 else float('inf')
-
-    # --- 6. FACTOR DE COBERTURA (k) ---
-    # Usamos t.ppf para replicar DISTR.T.INV de Excel para un 95.45% de confianza (alpha=0.0455)
-    df = max(1, round(v_eff)) # Grados de libertad no pueden ser menores a 1
-    k = t.ppf(1 - 0.0455 / 2, df=df) if df != float('inf') else 2.0
-
-    # --- 7. INCERTIDUMBRE EXPANDIDA (U) ---
-    U_m3 = u_c_m3 * k
-    U_ul = U_m3 * 1e9 # Convertir de m³ a µL
-
-    return U_ul
 
 def generar_textos_reporte(entradas_generales, resultados_aforos, especificaciones_patrones, site_config):
     """
@@ -235,6 +162,9 @@ def generar_textos_reporte(entradas_generales, resultados_aforos, especificacion
     # Obtener la lista de mantenimientos realizados
     mantenimientos_realizados = entradas_generales.get('mantenimientos', [])
 
+    # Obtener las notas y observaciones para el certificado
+    notas_certificado = site_config.get('notas_observaciones_certificado', [])
+
     return {
         "introduccion": texto_intro,
         "introduccion_certificado": texto_intro_certificado,
@@ -246,90 +176,24 @@ def generar_textos_reporte(entradas_generales, resultados_aforos, especificacion
         "trazabilidad_nacional": trazabilidad_nacional,
         "procedimiento_utilizado": procedimiento_utilizado,
         "mantenimientos": mantenimientos_realizados,
+        "notas_certificado": notas_certificado,
         "unidades": eg.get('unidades', 'µL')
     }
 
-def diagnosticar_incertidumbre(aforo_data, factores, promedios_ambientales, espec_patron, constantes, volumenes_corregidos_ul, canal_numero):
+def buscar_emt(valor_nominal_ul, emt_config, clase_instrumento):
     """
-    Función de diagnóstico que imprime paso a paso todos los cálculos de incertidumbre
-    para comparar con Excel.
+    Busca el Error Máximo Tolerado (EMT) en la configuración para una coincidencia exacta del volumen.
     """
-    print(f"\n=== DIAGNÓSTICO INCERTIDUMBRE CANAL {canal_numero} ===")
-    
-    # --- 1. INCERTIDUMBRES ESTÁNDAR (u_i) ---
-    print("\n1. INCERTIDUMBRES ESTÁNDAR:")
-    
-    # 1.1. Incertidumbre de la balanza (u_cal) en kg
-    resolucion_kg = espec_patron.get('resolucion_g', 0) / 1000.0
-    incert_max_kg = espec_patron.get('incertidumbre_max_g', 0) / 1000.0
-    excentricidad_kg = espec_patron.get('excentricidad_max_g', 0) / 1000.0
-    
-    print(f"  Resolución balanza: {resolucion_kg:.6f} kg")
-    print(f"  Incert. máx balanza: {incert_max_kg:.6f} kg")
-    print(f"  Excentricidad balanza: {excentricidad_kg:.6f} kg")
-    
-    u_cal = math.sqrt((resolucion_kg / math.sqrt(12))**2 + (incert_max_kg / 2)**2 + (excentricidad_kg / math.sqrt(12))**2)
-    print(f"  u_cal = {u_cal:.9f} kg")
+    # Usar la tabla de la clase específica si existe, si no, usar la 'default'.
+    tabla_emts = emt_config.get(clase_instrumento, emt_config.get('default', []))
 
-    # 1.2. Incertidumbre por repetibilidad (u_rep) en kg
-    masas_kg = [m / 1000.0 for m in aforo_data['mediciones_masa']]
-    print(f"  Masas (kg): {[f'{m:.6f}' for m in masas_kg[:5]]}...") # Solo mostrar primeras 5
-    
-    if len(masas_kg) < 2:
-        desv_est_masa = 0
-    else:
-        media_masa = sum(masas_kg) / len(masas_kg)
-        varianza = sum([(x - media_masa)**2 for x in masas_kg]) / (len(masas_kg) - 1)
-        desv_est_masa = math.sqrt(varianza)
-        print(f"  Media masa: {media_masa:.6f} kg")
-        print(f"  Desv. estándar: {desv_est_masa:.9f} kg")
-    
-    u_rep = desv_est_masa / math.sqrt(len(masas_kg)) if len(masas_kg) > 0 else 0
-    print(f"  u_rep = {u_rep:.9f} kg")
+    # Busca una coincidencia exacta como BUSCARV con el último argumento en 0 o FALSO.
+    for limite in tabla_emts:
+        if valor_nominal_ul == limite['alcance_ul']:
+            return limite['emt_ul']
 
-    # 1.3. Incertidumbre por resolución del instrumento (u_res) en m³
-    resolucion_instrumento_ul = constantes.get('div_min_valor', 0)
-    print(f"  Resolución instrumento: {resolucion_instrumento_ul} µL")
-    u_res_m3 = (resolucion_instrumento_ul / 1e9) / math.sqrt(12)
-    print(f"  u_res = {u_res_m3:.12f} m³")
-
-    # 1.4. Incertidumbre por temperatura del agua (u_temp_agua) en °C
-    u_temp_agua_C = 0.1 / math.sqrt(3)
-    print(f"  u_temp_agua = {u_temp_agua_C:.6f} °C")
-
-    # --- 2. COEFICIENTES DE SENSIBILIDAD (c_i) ---
-    print("\n2. COEFICIENTES DE SENSIBILIDAD:")
-    
-    volumenes_corregidos_m3 = [v / 1e9 for v in volumenes_corregidos_ul]
-    avg_vol_m3 = sum(volumenes_corregidos_m3) / len(volumenes_corregidos_m3) if volumenes_corregidos_m3 else 0
-    avg_masa_kg = sum(masas_kg) / len(masas_kg) if masas_kg else 0
-    
-    print(f"  Volumen promedio: {avg_vol_m3:.9f} m³")
-    print(f"  Masa promedio: {avg_masa_kg:.6f} kg")
-    print(f"  Alpha material: {constantes['alpha_material_pp']}")
-    
-    c_masa = - (avg_vol_m3 / avg_masa_kg) if avg_masa_kg != 0 else 0
-    print(f"  c_masa = -{avg_vol_m3:.9f} / {avg_masa_kg:.6f} = {c_masa:.6f} m³/kg")
-    
-    c_temp_agua = -avg_vol_m3 * constantes['alpha_material_pp']
-    print(f"  c_temp_agua = -{avg_vol_m3:.9f} * {constantes['alpha_material_pp']} = {c_temp_agua:.12f} m³/°C")
-
-    # --- 3. CONTRIBUCIONES A LA INCERTIDUMBRE COMBINADA ---
-    print("\n3. CONTRIBUCIONES:")
-    
-    u_y_cal = c_masa * u_cal
-    u_y_rep = c_masa * u_rep
-    u_y_res = u_res_m3
-    u_y_temp_agua = c_temp_agua * u_temp_agua_C
-    
-    print(f"  u_y_cal = {c_masa:.6f} * {u_cal:.9f} = {u_y_cal:.12f} m³")
-    print(f"  u_y_rep = {c_masa:.6f} * {u_rep:.9f} = {u_y_rep:.12f} m³")
-    print(f"  u_y_res = {u_y_res:.12f} m³")
-    print(f"  u_y_temp_agua = {c_temp_agua:.12f} * {u_temp_agua_C:.6f} = {u_y_temp_agua:.12f} m³")
-
-    # El resto de la función de diagnóstico sigue la misma lógica que `calcular_incertidumbre`
-    # y no necesita cambios para esta demostración.
-    # ...
+    # Si no se encuentra una coincidencia exacta, devuelve 0 o un valor por defecto.
+    return 0
 
 # --- FUNCIÓN PRINCIPAL ---
 
@@ -341,15 +205,44 @@ def procesar_todos_los_aforos(data):
     entradas_generales = data['entradas_generales']
     especificaciones_patrones = data.get('especificaciones_patrones', {})
     debug_mode = entradas_generales.get('debug_mode', False)
+    emts_config = data.get('emts_config', {})
     # Añadir la resolución del instrumento a las constantes para usarla en el cálculo de incertidumbre
+    tolerancia_instrumento = entradas_generales.get('tolerancia', 0)
     constantes['div_min_valor'] = entradas_generales.get('div_min_valor', 0)
 
     site_config = data.get('site_config', {})
     resultados_por_aforo = []
 
     promedios_ambientales_aforos = []
-    # Obtener el valor nominal del último aforo, que se usará como divisor
-    valor_nominal_canal_3 = data['aforo3']['valor_nominal']
+
+    # --- CÁLCULO DE EMT COMÚN PARA TODOS LOS CANALES ---
+    # 1. Encontrar el valor nominal máximo de los tres aforos.
+    max_valor_nominal = max(data['aforo1']['valor_nominal'], data['aforo2']['valor_nominal'], data['aforo3']['valor_nominal'])
+    
+    # 2. Buscar el EMT una sola vez usando ese valor máximo.
+    clase_instrumento = entradas_generales.get('clase_instrumento', 'default').lower()
+    emt_comun = buscar_emt(max_valor_nominal, emts_config, clase_instrumento)
+
+    # Obtener el valor nominal del último aforo, que se usará como divisor para el error porcentual
+    valor_nominal_ref_porcentaje = data['aforo3']['valor_nominal']
+
+    # --- Lógica de dos cerebros: uno para la pantalla, otro para los cálculos ---
+    # 1. Constantes para la corrección interna (lógica PDF)
+    constantes_pdf = {
+        'corr_ta_y': { 'a': 0.0005, 'b': 0.0025, 'c': 0.05 },
+        'corr_tamb_y': { 'a': 0.0109, 'b': -0.45, 'c': 4.6637 },
+        'corr_hr_y': { 'a': 0.0008, 'b': -0.1635, 'c': 5.7469 },
+        'corr_patm_y': { 'a': 0.0001, 'b': -0.1526, 'c': 60.12 },
+    }
+
+    def corregir_para_pdf(promedios_brutos):
+        # Esta función aplica la lógica de corrección del PDF (restando)
+        temp_agua = promedios_brutos['temp_agua'] - ((constantes_pdf['corr_ta_y']['a'] * promedios_brutos['temp_agua']**2) + (constantes_pdf['corr_ta_y']['b'] * promedios_brutos['temp_agua']) + constantes_pdf['corr_ta_y']['c'])
+        temp_amb = promedios_brutos['temp_amb'] - ((constantes_pdf['corr_tamb_y']['a'] * promedios_brutos['temp_amb']**2) + (constantes_pdf['corr_tamb_y']['b'] * promedios_brutos['temp_amb']) + constantes_pdf['corr_tamb_y']['c'])
+        presion = promedios_brutos['presion'] - ((constantes_pdf['corr_patm_y']['a'] * promedios_brutos['presion']**2) + (constantes_pdf['corr_patm_y']['b'] * promedios_brutos['presion']) + constantes_pdf['corr_patm_y']['c'])
+        humedad = promedios_brutos['humedad'] - ((constantes_pdf['corr_hr_y']['a'] * promedios_brutos['humedad']**2) + (constantes_pdf['corr_hr_y']['b'] * promedios_brutos['humedad']) + constantes_pdf['corr_hr_y']['c'])
+        return {'temp_agua': temp_agua, 'temp_amb': temp_amb, 'presion': presion, 'humedad': humedad}
+    # --- Fin de la lógica de dos cerebros ---
 
     for i in range(1, 4):
         aforo_key = f'aforo{i}'
@@ -361,8 +254,18 @@ def procesar_todos_los_aforos(data):
         )
         promedios_ambientales_aforos.append(promedios_ambientales)
         
+        # Calcular promedios brutos para la lógica interna
+        num_mediciones = len(aforo_data['mediciones_ambientales'])
+        promedios_brutos = {
+            'temp_agua': sum(med['temp_agua'] for med in aforo_data['mediciones_ambientales']) / num_mediciones,
+            'temp_amb': sum(med['temp_amb'] for med in aforo_data['mediciones_ambientales']) / num_mediciones,
+            'presion': sum(med['presion'] for med in aforo_data['mediciones_ambientales']) / num_mediciones,
+            'humedad': sum(med['humedad'] for med in aforo_data['mediciones_ambientales']) / num_mediciones,
+        }
+        promedios_internos_pdf = corregir_para_pdf(promedios_brutos)
+
         factores = calcular_factores_de_correccion(
-            promedios_ambientales,
+            promedios_internos_pdf, # <-- Usamos los valores corregidos según el PDF
             constantes
         )
 
@@ -377,12 +280,115 @@ def procesar_todos_los_aforos(data):
         if espec_patron is None or not isinstance(espec_patron, dict):
             espec_patron = {}
         
-        if debug_mode:
-            # Llamamos a la función de diagnóstico que imprimirá todo en la consola del servidor
-            diagnosticar_incertidumbre(aforo_data, factores, promedios_ambientales, espec_patron, constantes, volumenes_corregidos_ul, i)
-
-        incertidumbre = calcular_incertidumbre(aforo_data, factores, promedios_ambientales, espec_patron, constantes, volumenes_corregidos_ul)
+        # --- CÁLCULO DE INCERTIDUMBRE (Lógica corregida y unificada) ---
+        # PASO 6: INCERTIDUMBRES ESTÁNDAR u(x)
+        u_R_kg = 2.8867e-8
+        u_C_kg = 7.5e-8
+        u_E_kg = 2.31e-8
+        u_M_kg = math.sqrt(u_R_kg**2 + u_C_kg**2 + u_E_kg**2)
         
+        u_tA_C = 0.0757
+        d_rhoA_dtA = -0.2236
+        u_CmPA_kg_m3 = 4.15e-4
+        u_rho_A_kg_m3 = math.sqrt((d_rhoA_dtA * u_tA_C)**2 + u_CmPA_kg_m3**2)
+        
+        u_rho_a_kg_m3_sq = 1.9688e-6
+        u_rho_a_kg_m3 = math.sqrt(u_rho_a_kg_m3_sq)
+        
+        rho_B = constantes['rho_pesa_n74']
+        u_rho_B_kg_m3 = (rho_B * 0.03) / math.sqrt(12)
+        
+        gamma = constantes['alpha_material_pp']
+        u_gamma_C = (gamma * 0.2) / math.sqrt(12)
+        
+        tr = promedios_ambientales['temp_agua']
+        u_tr_C = 0.0786
+        
+        volumenes_corregidos_m3 = [v / 1e9 for v in volumenes_corregidos_ul]
+        if len(volumenes_corregidos_m3) > 1:
+            media_vol = sum(volumenes_corregidos_m3) / len(volumenes_corregidos_m3)
+            desv_est_vol = math.sqrt(sum([(v - media_vol)**2 for v in volumenes_corregidos_m3]) / (len(volumenes_corregidos_m3) - 1))
+            u_Crep_m3 = desv_est_vol / math.sqrt(len(volumenes_corregidos_m3))
+        else:
+            u_Crep_m3 = 0
+            
+        u_Cres_m3 = (constantes.get('div_min_valor', 0) / 1e9) / math.sqrt(12)
+        u_Crepro_m3 = 0.23 / 1e9
+        
+        # PASO 7: COEFICIENTES DE SENSIBILIDAD cᵢ
+        V20_prom_m3 = sum(volumenes_corregidos_m3) / len(volumenes_corregidos_m3) if volumenes_corregidos_m3 else 0
+        masas_kg = [m / 1000.0 for m in aforo_data['mediciones_masa']]
+        masa_aparente_prom_kg = sum(masas_kg) / len(masas_kg) if masas_kg else 0
+        
+        rho_A = factores['rho_agua']
+        rho_a = factores['rho_aire']
+        
+        c_Mo = -V20_prom_m3 / masa_aparente_prom_kg if masa_aparente_prom_kg != 0 else 0
+        c_Mi = V20_prom_m3 / masa_aparente_prom_kg if masa_aparente_prom_kg != 0 else 0
+        c_rho_A = -V20_prom_m3 / (rho_A - rho_a) if (rho_A - rho_a) != 0 else 0
+        c_rho_a = V20_prom_m3 * (1/(rho_A - rho_a) - 1/(rho_B - rho_a)) if (rho_A - rho_a) != 0 and (rho_B - rho_a) != 0 else 0
+        c_rho_B = V20_prom_m3 * rho_a / (rho_B * (rho_B - rho_a)) if rho_B != 0 and (rho_B - rho_a) != 0 else 0
+        c_gamma = -V20_prom_m3 * (tr - 20) / (1 - gamma * (tr - 20)) if (1 - gamma * (tr - 20)) != 0 else 0
+        c_tr = -V20_prom_m3 * gamma / (1 - gamma * (tr - 20)) if (1 - gamma * (tr - 20)) != 0 else 0
+        
+        # PASO 8: INCERTIDUMBRE COMBINADA u_c(V₂₀)
+        u_y_Mo = c_Mo * u_M_kg
+        u_y_Mi = c_Mi * u_M_kg
+        u_y_rho_A = c_rho_A * u_rho_A_kg_m3
+        u_y_rho_a = c_rho_a * u_rho_a_kg_m3
+        u_y_rho_B = c_rho_B * u_rho_B_kg_m3
+        u_y_gamma = c_gamma * u_gamma_C
+        u_y_tr = c_tr * u_tr_C
+        u_y_Crep = u_Crep_m3      # Coeficiente de sensibilidad es 1
+        u_y_Cres = u_Cres_m3      # Coeficiente de sensibilidad es 1
+        u_y_Crepro = u_Crepro_m3  # Coeficiente de sensibilidad es 1
+        
+        u_c_sq = (u_y_Mo**2 + u_y_Mi**2 + u_y_rho_A**2 + u_y_rho_a**2 + u_y_rho_B**2 +
+                  u_y_gamma**2 + u_y_tr**2 + u_y_Crep**2 + u_y_Cres**2 + u_y_Crepro**2)
+        u_c_m3 = math.sqrt(u_c_sq)
+        
+        # PASO 9: INCERTIDUMBRE EXPANDIDA U
+        v_rep = len(masas_kg) - 1 if len(masas_kg) > 1 else float('inf')
+        if u_c_m3 > 0 and v_rep != float('inf') and u_y_Crep != 0:
+            denominador_v_eff = (u_y_Crep**4) / v_rep
+            v_eff = (u_c_m3**4) / denominador_v_eff if denominador_v_eff > 0 else float('inf')
+        else:
+            v_eff = float('inf')
+
+        k = 2.0 if v_eff >= 100 else t.ppf(1 - 0.0455 / 2, df=max(1, round(v_eff))) # Usar k=2 para v_eff grandes
+        incertidumbre = (u_c_m3 * k) * 1e9
+        
+        if debug_mode:
+            print(f"\n\n=== DIAGNÓSTICO UNIFICADO CANAL {i} ===")
+            print("\n--- PASO 6: INCERTIDUMBRES ESTÁNDAR (u_i) ---")
+            print(f"  u(Masa): {u_M_kg:.6e} kg")
+            print(f"  u(Temp Agua): {u_tA_C:.6f} °C")
+            print(f"  u(Densidad Agua): {u_rho_A_kg_m3:.6f} kg/m³")
+            print(f"  u(Densidad Aire): {u_rho_a_kg_m3:.6f} kg/m³")
+            print(f"  u(Densidad Pesa): {u_rho_B_kg_m3:.6f} kg/m³")
+            print(f"  u(Gamma): {u_gamma_C:.6e} °C⁻¹")
+            print(f"  u(Temp Recipiente): {u_tr_C:.6f} °C")
+            print(f"  u(Repetibilidad): {u_Crep_m3:.6e} m³")
+            print(f"  u(Resolución): {u_Cres_m3:.6e} m³")
+            print(f"  u(Reproducibilidad): {u_Crepro_m3:.6e} m³")
+
+            print("\n--- VALORES INTERMEDIOS CLAVE ---")
+            print(f"  Densidad del Agua (ρ_A) calculada: {rho_A:.4f} kg/m³")
+            print(f"  Densidad del Aire (ρ_a) calculada: {rho_a:.4f} kg/m³")
+            print(f"  Factor Flotación (Z1) calculado: {factores['flotacion']:.6f}")
+            print(f"  Factor Dilatación (Z3) calculado: {factores['dilatacion']:.6f}")
+            
+            print("\n--- PASO 7: COEFICIENTES DE SENSIBILIDAD (c_i) ---")
+            print(f"  c(Masa): {c_Mi:.6f} m³/kg")
+            print(f"  c(Densidad Agua): {c_rho_A:.6e} m³/ (kg/m³)")
+            # ... (se pueden añadir más si es necesario)
+
+            print("\n--- PASO 8 y 9: RESULTADOS ---")
+            print(f"  Incertidumbre Combinada (u_c): {u_c_m3 * 1e9:.6f} µL")
+            print(f"  Grados de Libertad (v_eff): {v_eff:.2f}")
+            print(f"  Factor de Cobertura (k): {k:.4f}")
+            print(f"  Incertidumbre Expandida (U): {incertidumbre:.6f} µL")
+
         if not volumenes_corregidos_ul:
             promedio_volumen = 0
         else:
@@ -391,9 +397,17 @@ def procesar_todos_los_aforos(data):
         error_medida = promedio_volumen - aforo_data['valor_nominal']
         
         # Calcular el error de medida en porcentaje
+        # Se usa el valor nominal del Aforo 3 como divisor para todos, según la fórmula del Excel.
         error_porcentaje = 0
-        if valor_nominal_canal_3 != 0: # Usar siempre el valor del canal 3 como divisor
-            error_porcentaje = abs(error_medida / valor_nominal_canal_3) * 100
+        if valor_nominal_ref_porcentaje != 0:
+            error_porcentaje = abs(error_medida / valor_nominal_ref_porcentaje) * 100
+
+        if debug_mode:
+            print(f"\n--- CÁLCULO ERROR % CANAL {i} ---")
+            print(f"  Error de Medida (µL) [J83]: {error_medida:.6f}")
+            print(f"  Valor Nominal Canal 3 (µL) [D85]: {valor_nominal_ref_porcentaje:.2f}")
+            print(f"  Fórmula: abs({error_medida:.6f} / {valor_nominal_ref_porcentaje:.2f}) * 100")
+            print(f"  Resultado Error %: {error_porcentaje:.4f}")
 
         resultados_por_aforo.append({
             "valor_nominal": aforo_data['valor_nominal'],
@@ -402,7 +416,7 @@ def procesar_todos_los_aforos(data):
             "mediciones_volumen_ul": volumenes_corregidos_ul,
             "error_medida_porcentaje": error_porcentaje,
             "incertidumbre_expandida": incertidumbre,
-            "emt": None # Placeholder para el cálculo futuro
+            "emt": emt_comun
         })
 
     condiciones_finales = {
